@@ -30,9 +30,9 @@ export class UserService {
     await this.sendMemberJoinEmail(email, signupVerifyToken);
   }
   private async checkUserExists(email: string): Promise<boolean> {
-    // const user = await this.usersRepository.findOne({ name });
+    const user = await this.usersRepository.findOne({ email });
 
-    return email !== undefined;
+    return user !== undefined;
   }
 
   private async saveUser(
