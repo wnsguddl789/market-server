@@ -1,12 +1,12 @@
 import { Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Connection } from 'typeorm';
 
 import { ulid } from 'ulid';
 
 import { EmailService } from 'src/email/email.service';
 import { UserEntity } from './entities';
-import uuid from 'uuid';
+import { v1 as uuidv1 } from 'uuid';
 
 @Injectable()
 export class UserService {
@@ -14,17 +14,50 @@ export class UserService {
     @InjectRepository(UserEntity)
     private usersRepository: Repository<UserEntity>,
     private emailService: EmailService,
+    private connection: Connection,
   ) {}
+
+  private async saveUserUsingQueryRunner(
+    name: string,
+    email: string,
+    password: string,
+    signupVerifyToken: string,
+  ) {
+    const queryRunner = this.connection.createQueryRunner();
+
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const user = new UserEntity();
+      user.id = ulid();
+      user.name = name;
+      user.email = email;
+      user.password = password;
+      user.signupVerifyToken = signupVerifyToken;
+
+      await queryRunner.manager.save(user);
+
+      // throw new InternalServerErrorException(); // 일부러 에러를 발생시켜 본다
+
+      await queryRunner.commitTransaction();
+    } catch (e) {
+      // 에러가 발생하면 롤백
+      await queryRunner.rollbackTransaction();
+    } finally {
+      // 직접 생성한 QueryRunner는 해제시켜 주어야 함
+      await queryRunner.release();
+    }
+  }
 
   async createUser(name: string, email: string, password: string) {
     const userExist = await this.checkUserExists(email);
-
     if (userExist) {
       throw new UnprocessableEntityException(
         '해당 이메일로는 가입할 수 없습니다.',
       );
     }
-    const signupVerifyToken = uuid.v1();
+    const signupVerifyToken = uuidv1();
 
     await this.saveUser(name, email, password, signupVerifyToken);
     await this.sendMemberJoinEmail(email, signupVerifyToken);
